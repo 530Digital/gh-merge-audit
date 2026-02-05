@@ -128,9 +128,9 @@ escape() {
   printf "\"%s\"" "$s"
 }
 
-# gh api wrapper with rate-limit retry and exponential backoff
+# gh api wrapper with retry and exponential backoff for rate limits and transient errors
 gh_api() {
-  local max_retries=3 delay=30
+  local max_retries=5 delay=5
   for (( attempt=1; attempt<=max_retries; attempt++ )); do
     local err_file
     err_file=$(mktemp)
@@ -147,12 +147,19 @@ gh_api() {
       echo "⚠️  Rate limited; waiting ${delay}s (attempt $attempt/$max_retries)..." >&2
       sleep "$delay"
       (( delay *= 2 ))
+    elif [[ "$err" == *"connection reset"* || "$err" == *"connection refused"* || \
+            "$err" == *"EOF"* || "$err" == *"timeout"* || \
+            "$err" == *"TLS handshake"* || "$err" == *"Service Unavailable"* || \
+            "$err" == *"Bad Gateway"* || "$err" == *"broken pipe"* ]]; then
+      echo "⚠️  Network error; retrying in ${delay}s (attempt $attempt/$max_retries)..." >&2
+      sleep "$delay"
+      (( delay *= 2 ))
     else
       printf '%s' "$err" >&2
       return 1
     fi
   done
-  echo "❌ API call failed after $max_retries retries due to rate limiting." >&2
+  echo "❌ API call failed after $max_retries retries." >&2
   return 1
 }
 
