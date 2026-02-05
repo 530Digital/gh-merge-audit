@@ -33,11 +33,11 @@ The script follows a linear ETL pipeline:
 
 1. **Parse args** — handle `--help`, validate `ORG` is set
 2. **Validate** — check dependencies (`need()`), `gh auth` status, date format/range
-3. **Clone/fetch** each repo to `$REPO_ROOT/<repo>/`
+3. **Clone/fetch** each repo via `gh repo clone` to `$REPO_ROOT/<repo>/` (supports GHE via `GH_HOST`)
 4. **Check rate limit** — warn if GitHub API quota is low
 5. **Resume detection** — if output CSV exists, extract already-processed PR URLs
 6. **Query** merged PRs via `gh_api --paginate` piped through `jq -c`, filtered to `merged_at != null`
-7. **Process** each PR with progress display: extract merged date, author, commit subject (from `merge_commit_sha`, falling back to PR title), approvers (from reviews API via `jq -s` to handle pagination correctly), and ticket ID (via configurable `TICKET_PATTERN` regex in `extract_ticket()`)
+7. **Process** each PR with progress display: extract merged date, author, commit subject (from `merge_commit_sha`, falling back to PR title), approvers (from reviews API via `jq -s` to handle pagination correctly), and ticket ID(s) (via configurable `TICKET_PATTERN` regex in `extract_tickets()` — supports multiple per PR)
 8. **Sort** CSV rows by merged date, then optionally convert to XLSX via embedded Python heredoc (`csv_to_xlsx()`)
 9. **Report** data quality warnings and enforce strict mode exit codes (10=missing tickets, 11=missing subjects, 12=missing approvals)
 
@@ -45,7 +45,8 @@ The script follows a linear ETL pipeline:
 
 - All org/company-specific values are configurable via environment variables (see README.md)
 - `TICKET_PATTERN` defaults to `[A-Z]+-[0-9]+` (generic Jira-style); `TICKET_URL` is optional
-- `gh_api()` wraps `gh api` with retry + exponential backoff on rate limit errors
+- `gh_api()` wraps `gh api` with retry + exponential backoff on rate limit errors; uses a temp file for stderr to avoid mixing error output into response data
+- `REPORT_PREFIX` controls output filenames (default: `audit`)
 - Resume: re-running appends to existing CSV, skipping PRs already present (matched by URL)
 - CSV escaping is handled by `escape()` which doubles quotes and wraps fields
 - Date validation uses regex for format and lexicographic comparison for range

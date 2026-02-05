@@ -66,6 +66,7 @@ ORG=my-org STRICT=true STRICT_APPROVERS=true ./GH-SOC2-Audit.sh my-repo
 | `MAIN_BRANCH` | No | `main` | Base branch to query merged PRs against |
 | `TICKET_PATTERN` | No | `[A-Z]+-[0-9]+` | Regex to extract ticket IDs from PR title/body |
 | `TICKET_URL` | No | *(empty)* | Base URL prepended to ticket IDs (e.g. `https://myco.atlassian.net/browse/`). If unset, the raw ticket ID is used. |
+| `REPORT_PREFIX` | No | `audit` | Prefix for output filenames |
 | `REPO_ROOT` | No | `$HOME/Projects` | Directory where repos are cloned |
 | `OUT_DIR` | No | `<script-dir>/reports` | Directory where reports are written |
 | `STRICT` | No | `false` | Exit with error if any PR is missing a ticket or commit subject |
@@ -78,9 +79,11 @@ Dates are validated on startup. Invalid formats or `START_DATE` after `END_DATE`
 Reports are written to `$OUT_DIR` (default: `reports/` directory alongside the script):
 
 ```
-GH-SOC2-<repo>-Audit-<start>-to-<end>.csv
-GH-SOC2-<repo>-Audit-<start>-to-<end>.xlsx   (if python3 + openpyxl available)
+<prefix>-<repo>-<start>-to-<end>.csv
+<prefix>-<repo>-<start>-to-<end>.xlsx   (if python3 + openpyxl available)
 ```
+
+The default prefix is `audit` (e.g. `audit-my-repo-2025-01-01-to-2025-06-30.csv`). Override with `REPORT_PREFIX`.
 
 CSV rows are sorted by merged date (ascending). The XLSX version includes auto-filtered headers, a frozen header row, and auto-sized columns.
 
@@ -93,7 +96,7 @@ CSV rows are sorted by merged date (ascending). The XLSX version includes auto-f
 | PR URL | Link to the pull request on GitHub |
 | Author | GitHub username of the PR author |
 | Approvers | Semicolon-separated GitHub usernames who approved the PR |
-| Ticket | Ticket ID or URL extracted from the PR title/body |
+| Ticket | Ticket ID(s) or URL(s) extracted from the PR title/body (semicolon-separated if multiple) |
 
 ## Resume Support
 
@@ -117,11 +120,15 @@ The script makes 2-3 GitHub API calls per PR. For authenticated users, the limit
 ## How It Works
 
 1. Validates dependencies, dates, and `gh` authentication
-2. For each repo: clones (or fetches if already cloned) to `$REPO_ROOT/<repo>/`
+2. For each repo: clones via `gh repo clone` (or fetches if already cloned) to `$REPO_ROOT/<repo>/`
 3. Queries all closed PRs merged into `$MAIN_BRANCH` via the GitHub API (with pagination)
 4. Filters PRs to those merged within the `START_DATE`..`END_DATE` window
 5. Skips PRs already in the CSV (resume mode)
-6. For each new PR, extracts metadata via the GitHub API: merge commit subject, review approvals, and ticket ID from the PR title/body
+6. For each new PR, extracts metadata via the GitHub API: merge commit subject, review approvals, and ticket ID(s) from the PR title/body
 7. Appends CSV rows, then sorts by merged date and optionally converts to XLSX
 
 The script is **read-only** — it never pushes, writes, or modifies any repository.
+
+## GitHub Enterprise
+
+The script works with GitHub Enterprise. Set `GH_HOST` to your instance hostname (this is used by the `gh` CLI). Repos are cloned via `gh repo clone`, which respects your configured protocol (HTTPS/SSH) and authentication.

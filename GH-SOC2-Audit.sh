@@ -21,6 +21,7 @@ set -euo pipefail
 #   MAIN_BRANCH=main        (default: main)
 #   TICKET_PATTERN=<regex>  (default: [A-Z]+-[0-9]+  — matches Jira-style keys)
 #   TICKET_URL=<base-url>   (e.g. https://yourco.atlassian.net/browse/)
+#   REPORT_PREFIX=<string>  (default: audit  — output filename prefix)
 #   REPO_ROOT=<path>        (default: $HOME/Projects)
 #   OUT_DIR=<path>          (default: <script-dir>/reports)
 #   STRICT=true             (fail if missing ticket or fallback subject)
@@ -47,6 +48,7 @@ Optional environment variables:
   MAIN_BRANCH        Base branch to query                    (default: main)
   TICKET_PATTERN     Regex for ticket IDs in PR title/body   (default: [A-Z]+-[0-9]+)
   TICKET_URL         Base URL prepended to ticket IDs        (default: empty)
+  REPORT_PREFIX      Prefix for output filenames             (default: audit)
   REPO_ROOT          Directory where repos are cloned        (default: $HOME/Projects)
   OUT_DIR            Directory where reports are written      (default: <script-dir>/reports)
   STRICT             Fail if missing tickets or subjects      (default: false)
@@ -55,6 +57,9 @@ Optional environment variables:
 Prerequisites:
   gh (authenticated), jq, git
   Optional: python3 + openpyxl (for XLSX output)
+
+GitHub Enterprise: Set GH_HOST for your instance (used by gh cli).
+Repos are cloned via 'gh repo clone', respecting your gh protocol config.
 USAGE
   exit 0
 fi
@@ -77,6 +82,7 @@ END_DATE="${END_DATE:-2025-08-31}"
 MAIN_BRANCH="${MAIN_BRANCH:-main}"
 TICKET_PATTERN="${TICKET_PATTERN:-[A-Z]+-[0-9]+}"
 TICKET_URL="${TICKET_URL:-}"
+REPORT_PREFIX="${REPORT_PREFIX:-audit}"
 
 # ---- Date validation ----
 validate_date() {
@@ -115,7 +121,7 @@ if [[ ${#REPOS[@]} -eq 0 ]]; then
 fi
 
 # ---- Helpers ----
-extract_ticket() { grep -oE "$TICKET_PATTERN" <<<"$1" | head -n1 || true; }
+extract_tickets() { grep -oE "$TICKET_PATTERN" <<<"$1" | sort -u | paste -sd ';' - || true; }
 
 escape() {
   local s="${1//\"/\"\"}"
@@ -126,17 +132,23 @@ escape() {
 gh_api() {
   local max_retries=3 delay=30
   for (( attempt=1; attempt<=max_retries; attempt++ )); do
+    local err_file
+    err_file=$(mktemp)
     local output=""
-    if output=$(gh api "$@" 2>&1); then
+    if output=$(gh api "$@" 2>"$err_file"); then
+      rm -f "$err_file"
       printf '%s' "$output"
       return 0
     fi
-    if [[ "$output" == *"rate limit"* || "$output" == *"secondary rate limit"* || "$output" == *"abuse detection"* ]]; then
+    local err
+    err=$(<"$err_file")
+    rm -f "$err_file"
+    if [[ "$err" == *"rate limit"* || "$err" == *"secondary rate limit"* || "$err" == *"abuse detection"* ]]; then
       echo "⚠️  Rate limited; waiting ${delay}s (attempt $attempt/$max_retries)..." >&2
       sleep "$delay"
       (( delay *= 2 ))
     else
-      printf '%s' "$output" >&2
+      printf '%s' "$err" >&2
       return 1
     fi
   done
@@ -214,15 +226,15 @@ for REPO in "${REPOS[@]}"; do
     echo "⚠️  GitHub API rate limit is low: $RATE_REMAINING requests remaining." >&2
   fi
 
-  OUT_CSV="$OUT_DIR/GH-SOC2-$REPO-Audit-$START_DATE-to-$END_DATE.csv"
-  OUT_XLSX="$OUT_DIR/GH-SOC2-$REPO-Audit-$START_DATE-to-$END_DATE.xlsx"
+  OUT_CSV="$OUT_DIR/${REPORT_PREFIX}-${REPO}-${START_DATE}-to-${END_DATE}.csv"
+  OUT_XLSX="$OUT_DIR/${REPORT_PREFIX}-${REPO}-${START_DATE}-to-${END_DATE}.xlsx"
 
   # Resume support: detect existing CSV and extract already-processed PR URLs
   RESUME=false
   EXISTING_URLS=""
   if [[ -f "$OUT_CSV" ]] && (( $(wc -l < "$OUT_CSV") > 1 )); then
     RESUME=true
-    EXISTING_URLS=$(grep -oE 'https://github\.com/[^"]+/pull/[0-9]+' "$OUT_CSV" || true)
+    EXISTING_URLS=$(grep -oE 'https://[^"]+/pull/[0-9]+' "$OUT_CSV" || true)
     RESUME_COUNT=$(echo "$EXISTING_URLS" | grep -c . || true)
     echo "Resuming: found $RESUME_COUNT existing rows in $OUT_CSV"
   else
@@ -231,8 +243,8 @@ for REPO in "${REPOS[@]}"; do
 
   REPO_PATH="$REPO_ROOT/$REPO"
   if [[ ! -d "$REPO_PATH/.git" ]]; then
-    echo "Cloning https://github.com/$ORG/$REPO.git into $REPO_PATH ..."
-    git clone --quiet "https://github.com/$ORG/$REPO.git" "$REPO_PATH"
+    echo "Cloning $ORG/$REPO into $REPO_PATH ..."
+    gh repo clone "$ORG/$REPO" "$REPO_PATH" -- --quiet
   else
     echo "Using existing clone at $REPO_PATH"
   fi
@@ -285,14 +297,14 @@ for REPO in "${REPOS[@]}"; do
     BODY=$(jq -r '.body // ""' <<<"$pr")
     MERGE_SHA=$(jq -r '.merge_commit_sha // empty' <<<"$pr")
 
-    # Ticket extraction (optionally as clickable link if TICKET_URL is set)
-    RAW_TICKET="$(extract_ticket "$TITLE")"
-    [[ -z "$RAW_TICKET" ]] && RAW_TICKET="$(extract_ticket "$BODY")"
-    if [[ -n "$RAW_TICKET" ]]; then
+    # Ticket extraction — searches title and body, deduplicates multiple matches
+    RAW_TICKETS="$(extract_tickets "$TITLE $BODY")"
+    if [[ -n "$RAW_TICKETS" ]]; then
       if [[ -n "$TICKET_URL" ]]; then
-        TICKET="${TICKET_URL}${RAW_TICKET}"
+        # Prepend base URL to each ticket ID
+        TICKET=$(echo "$RAW_TICKETS" | tr ';' '\n' | sed "s|^|${TICKET_URL}|" | paste -sd ';' -)
       else
-        TICKET="$RAW_TICKET"
+        TICKET="$RAW_TICKETS"
       fi
     else
       TICKET=""
