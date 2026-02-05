@@ -30,6 +30,8 @@ python3 -m pip install --user openpyxl
 ORG=<github-org> ./GH-SOC2-Audit.sh <repo1> [repo2 ...]
 ```
 
+Run `./GH-SOC2-Audit.sh --help` for full usage details.
+
 ### Examples
 
 Audit a single repo with defaults:
@@ -69,6 +71,8 @@ ORG=my-org STRICT=true STRICT_APPROVERS=true ./GH-SOC2-Audit.sh my-repo
 | `STRICT` | No | `false` | Exit with error if any PR is missing a ticket or commit subject |
 | `STRICT_APPROVERS` | No | `false` | Exit with error if any PR has no approved reviews |
 
+Dates are validated on startup. Invalid formats or `START_DATE` after `END_DATE` will produce a clear error.
+
 ## Output
 
 Reports are written to `$OUT_DIR` (default: `reports/` directory alongside the script):
@@ -77,6 +81,8 @@ Reports are written to `$OUT_DIR` (default: `reports/` directory alongside the s
 GH-SOC2-<repo>-Audit-<start>-to-<end>.csv
 GH-SOC2-<repo>-Audit-<start>-to-<end>.xlsx   (if python3 + openpyxl available)
 ```
+
+CSV rows are sorted by merged date (ascending). The XLSX version includes auto-filtered headers, a frozen header row, and auto-sized columns.
 
 ### CSV Columns
 
@@ -89,14 +95,20 @@ GH-SOC2-<repo>-Audit-<start>-to-<end>.xlsx   (if python3 + openpyxl available)
 | Approvers | Semicolon-separated GitHub usernames who approved the PR |
 | Ticket | Ticket ID or URL extracted from the PR title/body |
 
-The XLSX version includes auto-filtered headers, a frozen header row, and auto-sized columns.
+## Resume Support
+
+If the script is interrupted (network failure, rate limit, Ctrl-C), simply re-run the same command. It detects the existing CSV and skips already-processed PRs, appending only new ones. Delete the CSV to force a full re-run.
+
+## Rate Limiting
+
+The script makes 2-3 GitHub API calls per PR. For authenticated users, the limit is 5,000 requests/hour. Before processing each repo, the script checks remaining quota and warns if it's low. If a rate limit is hit mid-run, API calls are retried with exponential backoff (up to 3 attempts). If the limit is exhausted, the script fails and can be resumed later.
 
 ## Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | 0 | Success |
-| 1 | Missing dependency or `ORG` not set or `gh` not authenticated |
+| 1 | Missing dependency, `ORG` not set, `gh` not authenticated, or invalid dates |
 | 2 | No repos specified |
 | 10 | `STRICT=true` and PRs found with missing tickets |
 | 11 | `STRICT=true` and PRs found with missing commit subjects |
@@ -104,10 +116,12 @@ The XLSX version includes auto-filtered headers, a frozen header row, and auto-s
 
 ## How It Works
 
-1. Clones each repo (or fetches if already cloned) to `$REPO_ROOT/<repo>/`
-2. Queries all closed PRs merged into `$MAIN_BRANCH` via the GitHub API (with pagination)
-3. Filters PRs to those merged within the `START_DATE`..`END_DATE` window
-4. For each PR, extracts metadata via the GitHub API: merge commit subject, review approvals, and ticket ID from the PR title/body
-5. Writes one CSV row per PR, then optionally converts to XLSX
+1. Validates dependencies, dates, and `gh` authentication
+2. For each repo: clones (or fetches if already cloned) to `$REPO_ROOT/<repo>/`
+3. Queries all closed PRs merged into `$MAIN_BRANCH` via the GitHub API (with pagination)
+4. Filters PRs to those merged within the `START_DATE`..`END_DATE` window
+5. Skips PRs already in the CSV (resume mode)
+6. For each new PR, extracts metadata via the GitHub API: merge commit subject, review approvals, and ticket ID from the PR title/body
+7. Appends CSV rows, then sorts by merged date and optionally converts to XLSX
 
 The script is **read-only** — it never pushes, writes, or modifies any repository.

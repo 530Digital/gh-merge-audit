@@ -12,6 +12,9 @@ Single-file Bash tool (`GH-SOC2-Audit.sh`) that generates SOC2-style audit repor
 # ORG is required — set it to the GitHub org or username
 ORG=my-org ./GH-SOC2-Audit.sh repo1 [repo2 ...]
 
+# Show full usage
+./GH-SOC2-Audit.sh --help
+
 # With environment overrides
 ORG=my-org START_DATE=2025-01-01 END_DATE=2025-06-30 \
   TICKET_URL=https://myco.atlassian.net/browse/ \
@@ -28,21 +31,27 @@ ORG=my-org STRICT=true STRICT_APPROVERS=true ./GH-SOC2-Audit.sh myrepo
 
 The script follows a linear ETL pipeline:
 
-1. **Validate** dependencies (`need()`) and `gh auth` status; require `ORG` env var
-2. **Clone/fetch** each repo to `$REPO_ROOT/<repo>/`
-3. **Query** merged PRs via `gh api --paginate` on the pulls endpoint, filtered to `state=closed` + `merged_at != null`
-4. **Process** each PR: extract merged date, author, commit subject (from `merge_commit_sha`, falling back to PR title), approvers (from reviews API), and ticket ID (via configurable `TICKET_PATTERN` regex in `extract_ticket()`)
-5. **Output** CSV rows to `$OUT_DIR/` (defaults to `reports/` in the repo), then optionally convert to XLSX via embedded Python heredoc (`csv_to_xlsx()`)
-6. **Report** data quality warnings and enforce strict mode exit codes (10=missing tickets, 11=missing subjects, 12=missing approvals)
+1. **Parse args** — handle `--help`, validate `ORG` is set
+2. **Validate** — check dependencies (`need()`), `gh auth` status, date format/range
+3. **Clone/fetch** each repo to `$REPO_ROOT/<repo>/`
+4. **Check rate limit** — warn if GitHub API quota is low
+5. **Resume detection** — if output CSV exists, extract already-processed PR URLs
+6. **Query** merged PRs via `gh_api --paginate` piped through `jq -c`, filtered to `merged_at != null`
+7. **Process** each PR with progress display: extract merged date, author, commit subject (from `merge_commit_sha`, falling back to PR title), approvers (from reviews API via `jq -s` to handle pagination correctly), and ticket ID (via configurable `TICKET_PATTERN` regex in `extract_ticket()`)
+8. **Sort** CSV rows by merged date, then optionally convert to XLSX via embedded Python heredoc (`csv_to_xlsx()`)
+9. **Report** data quality warnings and enforce strict mode exit codes (10=missing tickets, 11=missing subjects, 12=missing approvals)
 
 ## Key Details
 
 - All org/company-specific values are configurable via environment variables (see README.md)
 - `TICKET_PATTERN` defaults to `[A-Z]+-[0-9]+` (generic Jira-style); `TICKET_URL` is optional
+- `gh_api()` wraps `gh api` with retry + exponential backoff on rate limit errors
+- Resume: re-running appends to existing CSV, skipping PRs already present (matched by URL)
 - CSV escaping is handled by `escape()` which doubles quotes and wraps fields
-- Date filtering uses string comparison on `YYYY-MM-DD` prefixes
+- Date validation uses regex for format and lexicographic comparison for range
 - The script is read-only (no pushes or modifications to repos)
 - Uses `set -euo pipefail` for strict Bash error handling
+- All `(( VAR += 1 ))` instead of `((VAR++))` to avoid `set -e` exit on zero-valued post-increment
 
 ## Documentation
 
