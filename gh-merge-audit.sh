@@ -10,7 +10,7 @@ set -euo pipefail
 # - Supports resume: re-running skips already-processed PRs.
 #
 # Usage:
-#   ORG=<github-org> ./GH-SOC2-Audit.sh [--help] repo1 [repo2 ...]
+#   ORG=<github-org> ./gh-merge-audit.sh [--help] repo1 [repo2 ...]
 #
 # Required ENV:
 #   ORG=<github-org>        GitHub organization or user that owns the repos
@@ -34,7 +34,7 @@ set -euo pipefail
 # ---- Help ----
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'USAGE'
-Usage: ORG=<github-org> GH-SOC2-Audit.sh [--help] <repo1> [repo2 ...]
+Usage: ORG=<github-org> gh-merge-audit.sh [--help] <repo1> [repo2 ...]
 
 PR Audit Report Generator — produces CSV/XLSX reports of merged pull requests
 for SOC2-style compliance auditing. Supports resume on re-run.

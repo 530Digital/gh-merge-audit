@@ -4,24 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Single-file Bash tool (`GH-SOC2-Audit.sh`) that generates SOC2-style audit reports for merged GitHub pull requests. It queries the GitHub API for merged PRs within a date range, extracts metadata (author, approvers, issue-tracker tickets, commit subjects), and outputs CSV and optionally XLSX reports.
+Single-file Bash tool (`gh-merge-audit.sh`) that generates SOC2-style audit reports for merged GitHub pull requests. It queries the GitHub API for merged PRs within a date range, extracts metadata (author, approvers, issue-tracker tickets, commit subjects), and outputs CSV and optionally XLSX reports.
 
 ## Running
 
 ```bash
 # ORG is required — set it to the GitHub org or username
-ORG=my-org ./GH-SOC2-Audit.sh repo1 [repo2 ...]
+ORG=my-org ./gh-merge-audit.sh repo1 [repo2 ...]
 
 # Show full usage
-./GH-SOC2-Audit.sh --help
+./gh-merge-audit.sh --help
 
 # With environment overrides
 ORG=my-org START_DATE=2025-01-01 END_DATE=2025-06-30 \
   TICKET_URL=https://myco.atlassian.net/browse/ \
-  ./GH-SOC2-Audit.sh myrepo
+  ./gh-merge-audit.sh myrepo
 
 # Strict modes (exit non-zero on data quality issues)
-ORG=my-org STRICT=true STRICT_APPROVERS=true ./GH-SOC2-Audit.sh myrepo
+ORG=my-org STRICT=true STRICT_APPROVERS=true ./gh-merge-audit.sh myrepo
 ```
 
 **Required tools**: `gh` (authenticated), `jq`, `git`

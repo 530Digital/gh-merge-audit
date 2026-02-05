@@ -27,17 +27,17 @@ python3 -m pip install --user openpyxl
 ## Usage
 
 ```bash
-ORG=<github-org> ./GH-SOC2-Audit.sh <repo1> [repo2 ...]
+ORG=<github-org> ./gh-merge-audit.sh <repo1> [repo2 ...]
 ```
 
-Run `./GH-SOC2-Audit.sh --help` for full usage details.
+Run `./gh-merge-audit.sh --help` for full usage details.
 
 ### Examples
 
 Audit a single repo with defaults:
 
 ```bash
-ORG=my-org ./GH-SOC2-Audit.sh my-api
+ORG=my-org ./gh-merge-audit.sh my-api
 ```
 
 Audit multiple repos with a custom date range and Jira integration:
@@ -47,13 +47,13 @@ ORG=my-org \
   START_DATE=2025-01-01 \
   END_DATE=2025-06-30 \
   TICKET_URL=https://myco.atlassian.net/browse/ \
-  ./GH-SOC2-Audit.sh api-service web-app worker
+  ./gh-merge-audit.sh api-service web-app worker
 ```
 
 Audit with strict validation (exit non-zero on data quality issues):
 
 ```bash
-ORG=my-org STRICT=true STRICT_APPROVERS=true ./GH-SOC2-Audit.sh my-repo
+ORG=my-org STRICT=true STRICT_APPROVERS=true ./gh-merge-audit.sh my-repo
 ```
 
 ## Environment Variables
